@@ -194,7 +194,7 @@ def parse_messageBan(message):
 		return None, 0, 'Idle'
 	#LogMordhauPlayerController: Display: Admin BIG | dan (76561198292933506) banned player 76561199053620235 (Duration: 0, Reason: RDM)
 	#regex_capture = re.compile("Banned Steam ID (\d+), duration: (\d+), reason:(.*)?")
-	regex_capture = re.compile("LogMordhauPlayerController: Display: (.+) banned player (\d+) \(Duration: (\d+), Reason: (.*)\)")
+	regex_capture = re.compile("LogMordhauPlayerController: Display: Admin (.+) banned player (\d+) \(Duration: (\d+), Reason: (.*)\)")
 	regex_parse = re.search(regex_capture, message)
 	if not regex_parse:
 		print('Failed to parse the regex for message!!!')
@@ -211,7 +211,7 @@ def parse_messageBan(message):
 def parse_messageMute(message):
 	#LogMordhauPlayerController: Display: Admin AssaultLine (76561198005305380) muted player 76561198966484285 (Duration: 10000)
 	#regex_capture = re.compile("LogMordhauPlayerController: Display: (\d+), duration: (\d+), reason:(.*)?")
-	regex_capture = re.compile("LogMordhauPlayerController: Display: (.+) muted player (\d+) \(Duration: (\d+)\)")
+	regex_capture = re.compile("LogMordhauPlayerController: Display: Admin (.+) muted player (\d+) \(Duration: (\d+)\)")
 	regex_parse = re.search(regex_capture, message)
 	if not regex_parse:
 		print('Failed to parse the regex for message!!!')
