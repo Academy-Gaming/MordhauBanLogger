@@ -33,7 +33,7 @@ def readLogfilesLoop():
 				#print(logfile_line)
 				if not server in lastDateRead:
 					lastDateRead[server] = datetime.datetime.now()
-				if 'Banned Steam ID' in logfile_line:
+				if 'banned player' in logfile_line:
 					lineDate = logfile_line.strip().split("]")[0].replace("[","").split(":")[0]
 					#print("Date found:"+str(lineDate))
 					date_object = datetime.datetime.strptime(lineDate, '%Y.%m.%d-%H.%M.%S')
@@ -63,9 +63,9 @@ def readLogfilesLoop():
 def banhandler(event):
 	ban_message = event['Message']
 	print("Parsing potential ban message {}".format(ban_message))
-	steamid, ban_duration, reason = parse_messageBan(ban_message)
+	admin,steamid, ban_duration, reason = parse_messageBan(ban_message)
 	
-	if steamid == "ERROR" and ban_duration == "ERROR" and reason == "ERROR":
+	if admin == "ERROR" and steamid == "ERROR" and ban_duration == "ERROR" and reason == "ERROR":
 		return None
 	
 	if ban_duration == 0:
@@ -106,6 +106,7 @@ def banhandler(event):
 			'Playername': playername,
 			'BanDuration': ban_duration,
 			'Reason': reason,
+			'BanAdmin': admin,
 			'PlayerAvatar': playeravatarlink,
 			'Type': "BAN",
 			'BanHistory': playerhistory
@@ -118,6 +119,7 @@ def banhandler(event):
 	playerhistory.append({
 				'BanDate': datetime.datetime.isoformat(datetime.datetime.now()),
 				'BanDuration': ban_duration,
+				'BanAdmin': admin,
 				'BanReason': reason,
 				'Type': "BAN"
 			})
@@ -190,18 +192,21 @@ def parse_messageBan(message):
 	if 'reason: Idle' in message:
 		# Not a ban
 		return None, 0, 'Idle'
-	regex_capture = re.compile("Banned Steam ID (\d+), duration: (\d+), reason:(.*)?")
+	#LogMordhauPlayerController: Display: Admin BIG | dan (76561198292933506) banned player 76561199053620235 (Duration: 0, Reason: RDM)
+	#regex_capture = re.compile("Banned Steam ID (\d+), duration: (\d+), reason:(.*)?")
+	regex_capture = re.compile("LogMordhauPlayerController: Display: (.+) banned player (\d+) \(Duration: (\d+), Reason: (.*)\)")
 	regex_parse = re.search(regex_capture, message)
 	if not regex_parse:
 		print('Failed to parse the regex for message!!!')
 		return "ERROR","ERROR","ERROR"
-	steamid = regex_parse[1]
-	duration = regex_parse[2]
+	admin = regex_parse[1]
+	steamid = regex_parse[2]
+	duration = regex_parse[3]
 	try:
-		reason = regex_parse[3]
+		reason = regex_parse[4]
 	except IndexError:
 		reason = 'None given'
-	return steamid, duration, reason
+	return admin,steamid,duration,reason
 
 def parse_messageMute(message):
 	#LogMordhauPlayerController: Display: Admin AssaultLine (76561198005305380) muted player 76561198966484285 (Duration: 10000)
@@ -312,6 +317,7 @@ class DiscordClient(discord.Client):
 		**SteamId**: {self.ban_message['SteamId']}
 		**Playername**: {self.ban_message['Playername']}
 		**Offense**: {self.ban_message['Reason']}
+		**Admin**: {self.ban_message['BanAdmin']}
 		**Duration**: {self.ban_message['BanDuration']} (in minutes)
 
 	**MUGSHOT**
