@@ -33,7 +33,7 @@ def readLogfilesLoop():
 				#print(logfile_line)
 				if not server in lastDateRead:
 					lastDateRead[server] = datetime.datetime.now()
-			    if not 'unbanned player' in logfile_line:
+			if not 'unbanned player' in logfile_line:
 				if 'banned player' in logfile_line:
 					lineDate = logfile_line.strip().split("]")[0].replace("[","").split(":")[0]
 					#print("Date found:"+str(lineDate))
