@@ -37,3 +37,6 @@ The bot logs all the same info that is sent to discord into a json file that is 
 Each of your servers will have their own json. It will only create a new json each month for each server to cut down on the amount of files you may have to search through.
 (will probably implement database support in the future)
 
+
+Important Note, specially if the bot does not react: 
+Check if the Log timestamps are fitting the servers system time. If not, you need to add the -LOCALLOGTIMES server start parameter and restart the server. If you have no access to it, you would currently have to edit the code. Maybe making a Offset config-variable in the future?!
