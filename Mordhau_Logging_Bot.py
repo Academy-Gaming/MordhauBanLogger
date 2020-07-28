@@ -19,55 +19,68 @@ playerhistoryData = {}
 
 configServersRaw = []
 for x in config.config['SERVERS']:
-	configServersRaw.append(str(x)+"="+str(config.config['SERVERS'][x]))
+	configServersRaw.append(str(x) + "=" + str(config.config['SERVERS'][x]))
 servers = {x[0].strip(): x[1].strip() for x in [y.split("=") for y in configServersRaw]}
 
+
 def readLogfilesLoop():
-	
 	lastDateRead = {}
-	
+
 	while True:
 		for server in servers:
 			logfile = io.open(servers[server], mode="r", encoding="utf-8")
 			for logfile_line in logfile.readlines():
-				#print(logfile_line)
+				# print(logfile_line)
 				if not server in lastDateRead:
 					lastDateRead[server] = datetime.datetime.now()
-				if 'Banned Steam ID' in logfile_line:
-					lineDate = logfile_line.strip().split("]")[0].replace("[","").split(":")[0]
-					#print("Date found:"+str(lineDate))
-					date_object = datetime.datetime.strptime(lineDate, '%Y.%m.%d-%H.%M.%S')
-					if date_object > lastDateRead[server]:
-						lastDateRead[server] = date_object
-						print("Going to handle ban message "+str(logfile_line))
-						event = {}
-						event['Message'] = logfile_line
-						event['Server'] = server
-						banhandler(event)
+				if not 'unbanned player' in logfile_line:
+					if 'banned player' in logfile_line:
+						lineDate = logfile_line.strip().split("]")[0].replace("[", "").split(":")[0]
+						# print("Date found:"+str(lineDate))
+						date_object = datetime.datetime.strptime(lineDate, '%Y.%m.%d-%H.%M.%S')
+						if date_object > lastDateRead[server]:
+							lastDateRead[server] = date_object
+							print("Going to handle ban message " + str(logfile_line))
+							event = {}
+							event['Message'] = logfile_line
+							event['Server'] = server
+							banhandler(event)
 				if 'muted player' in logfile_line:
-					lineDate = logfile_line.strip().split("]")[0].replace("[","").split(":")[0]
-					#print("Date found:"+str(lineDate))
+					lineDate = logfile_line.strip().split("]")[0].replace("[", "").split(":")[0]
+					# print("Date found:"+str(lineDate))
 					date_object = datetime.datetime.strptime(lineDate, '%Y.%m.%d-%H.%M.%S')
 					if date_object > lastDateRead[server]:
 						lastDateRead[server] = date_object
-						print("Going to handle mute message "+str(logfile_line))
+						print("Going to handle mute message " + str(logfile_line))
 						event = {}
 						event['Message'] = logfile_line
 						event['Server'] = server
 						mutehandler(event)
-								
-				#lastDateRead[server] = datetime.datetime.now()
-			logfile.close()	
+				if 'unbanned player' in logfile_line:
+					lineDate = logfile_line.strip().split("]")[0].replace("[", "").split(":")[0]
+					# print("Date found:"+str(lineDate))
+					date_object = datetime.datetime.strptime(lineDate, '%Y.%m.%d-%H.%M.%S')
+					if date_object > lastDateRead[server]:
+						lastDateRead[server] = date_object
+						print("Going to handle unban message " + str(logfile_line))
+						event = {}
+						event['Message'] = logfile_line
+						event['Server'] = server
+						unbanhandler(event)
+
+			# lastDateRead[server] = datetime.datetime.now()
+			logfile.close()
 	time.sleep(5)
+
 
 def banhandler(event):
 	ban_message = event['Message']
 	print("Parsing potential ban message {}".format(ban_message))
-	steamid, ban_duration, reason = parse_messageBan(ban_message)
-	
-	if steamid == "ERROR" and ban_duration == "ERROR" and reason == "ERROR":
+	admin, steamid, ban_duration, reason = parse_messageBan(ban_message)
+
+	if admin == "ERROR" and steamid == "ERROR" and ban_duration == "ERROR" and reason == "ERROR":
 		return None
-	
+
 	if ban_duration == 0:
 		ban_duration = 'PERMANENT'
 	else:
@@ -79,9 +92,11 @@ def banhandler(event):
 	print('Looking up playername by steam ID')
 	steam_key = str(config.config['SETTINGS']['steam_key'].strip())
 	try:
-		resp = requests.get('http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'.format(steam_key, steamid))
+		resp = requests.get(
+			'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'.format(steam_key,
+																										 steamid))
 	except:
-		print ("Error looking up user on steam")
+		print("Error looking up user on steam")
 	try:
 		print(resp.text)
 		playername = resp.json()['response']['players'][0]['personaname']
@@ -89,50 +104,53 @@ def banhandler(event):
 	except:
 		playername = ""
 		playeravatarlink = ""
-		
+
 	server = event['Server']
 
-	playerhistory = get_playerhistory(server,steamid)
+	playerhistory = get_playerhistory(server, steamid)
 	if not playerhistory:
 		playerhistory = []
-	
+
 	if len(playerhistory) > 10:
 		playerhistory = playerhistory[-10:]
-	
+
 	if not 'Vote kick' in reason:
-		payload={
+		payload = {
 			'SteamId': steamid,
 			'Server': server,
 			'Playername': playername,
 			'BanDuration': ban_duration,
 			'Reason': reason,
+			'BanAdmin': admin,
 			'PlayerAvatar': playeravatarlink,
 			'Type': "BAN",
 			'BanHistory': playerhistory
 		}
 		handlerDiscord(payload)
-	
+
 	else:
 		print('Player was kicked by vote - not sending discord notification.')
-	
-	playerhistory.append({
-				'BanDate': datetime.datetime.isoformat(datetime.datetime.now()),
-				'BanDuration': ban_duration,
-				'BanReason': reason,
-				'Type': "BAN"
-			})
 
-	update_playerhistory(server,steamid,playername,playerhistory)
+	playerhistory.append({
+		'BanDate': datetime.datetime.isoformat(datetime.datetime.now()),
+		'BanDuration': ban_duration,
+		'BanAdmin': admin,
+		'BanReason': reason,
+		'Type': "BAN"
+	})
+
+	update_playerhistory(server, steamid, playername, playerhistory)
 	return True
+
 
 def mutehandler(event):
 	mute_message = event['Message']
 	print("Parsing potential mute message {}".format(mute_message))
-	admin,steamid, ban_duration = parse_messageMute(mute_message)
-	
+	admin, steamid, ban_duration = parse_messageMute(mute_message)
+
 	if admin == "ERROR" and steamid == "ERROR" and ban_duration == "ERROR":
 		return None
-	
+
 	if ban_duration == 0:
 		ban_duration = 'PERMANENT'
 	else:
@@ -141,9 +159,11 @@ def mutehandler(event):
 	print('Looking up playername by steam ID')
 	steam_key = str(config.config['SETTINGS']['steam_key'].strip())
 	try:
-		resp = requests.get('http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'.format(steam_key, steamid))
+		resp = requests.get(
+			'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'.format(steam_key,
+																										 steamid))
 	except:
-		print ("Error looking up user on steam")
+		print("Error looking up user on steam")
 	try:
 		print(resp.text)
 		playername = resp.json()['response']['players'][0]['personaname']
@@ -151,19 +171,19 @@ def mutehandler(event):
 	except:
 		playername = ""
 		playeravatarlink = ""
-		
+
 	server = event['Server']
 
-	playerhistory = get_playerhistory(server,steamid)
+	playerhistory = get_playerhistory(server, steamid)
 	if not playerhistory:
 		playerhistory = []
-	
+
 	reason = 'None given'
-	
+
 	if len(playerhistory) > 10:
 		playerhistory = playerhistory[-10:]
-	
-	payload={
+
+	payload = {
 		'SteamId': steamid,
 		'Server': server,
 		'Playername': playername,
@@ -174,93 +194,162 @@ def mutehandler(event):
 		'BanHistory': playerhistory
 	}
 	handlerDiscord(payload)
-	
-	playerhistory.append({
-				'BanDate': datetime.datetime.isoformat(datetime.datetime.now()),
-				'BanDuration': ban_duration,
-				'MuteAdmin': admin,
-				'BanReason': reason,
-				'Type': "MUTE"
-			})
 
-	update_playerhistory(server,steamid,playername,playerhistory)
+	playerhistory.append({
+		'BanDate': datetime.datetime.isoformat(datetime.datetime.now()),
+		'BanDuration': ban_duration,
+		'MuteAdmin': admin,
+		'BanReason': reason,
+		'Type': "MUTE"
+	})
+
+	update_playerhistory(server, steamid, playername, playerhistory)
 	return True
+
+
+def unbanhandler(event):
+	unban_message = event['Message']
+	print("Parsing potential unban message {}".format(unban_message))
+	admin, steamid = parse_messageUnban(unban_message)
+
+	if admin == "ERROR" and steamid == "ERROR":
+		return None
+
+	# Looking up Player name by SteamID
+	print('Looking up playername by steam ID')
+	steam_key = str(config.config['SETTINGS']['steam_key'].strip())
+	try:
+		resp = requests.get(
+			'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={}&steamids={}'.format(steam_key,
+																										 steamid))
+	except:
+		print("Error looking up user on steam")
+	try:
+		print(resp.text)
+		playername = resp.json()['response']['players'][0]['personaname']
+		playeravatarlink = resp.json()['response']['players'][0]['avatarfull']
+	except:
+		playername = ""
+		playeravatarlink = ""
+
+	server = event['Server']
+
+	playerhistory = get_playerhistory(server, steamid)
+	if not playerhistory:
+		playerhistory = []
+
+	if len(playerhistory) > 10:
+		playerhistory = playerhistory[-10:]
+
+	payload = {
+		'SteamId': steamid,
+		'Server': server,
+		'Playername': playername,
+		'UnbanAdmin': admin,
+		'PlayerAvatar': playeravatarlink,
+		'Type': "UNBAN",
+		'BanHistory': playerhistory
+	}
+	handlerDiscord(payload)
+	return True
+
 
 def parse_messageBan(message):
 	if 'reason: Idle' in message:
 		# Not a ban
 		return None, 0, 'Idle'
-	regex_capture = re.compile("Banned Steam ID (\d+), duration: (\d+), reason:(.*)?")
+	# LogMordhauPlayerController: Display: Admin BIG | dan (76561198292933506) banned player 76561199053620235 (Duration: 0, Reason: RDM)
+	# regex_capture = re.compile("Banned Steam ID (\d+), duration: (\d+), reason:(.*)?")
+	regex_capture = re.compile(
+		"LogMordhauPlayerController: Display: Admin (.+) banned player (\d+) \(Duration: (\d+), Reason: (.*)\)")
 	regex_parse = re.search(regex_capture, message)
 	if not regex_parse:
 		print('Failed to parse the regex for message!!!')
-		return "ERROR","ERROR","ERROR"
-	steamid = regex_parse[1]
-	duration = regex_parse[2]
-	try:
-		reason = regex_parse[3]
-	except IndexError:
-		reason = 'None given'
-	return steamid, duration, reason
-
-def parse_messageMute(message):
-	#LogMordhauPlayerController: Display: Admin AssaultLine (76561198005305380) muted player 76561198966484285 (Duration: 10000)
-	#regex_capture = re.compile("LogMordhauPlayerController: Display: (\d+), duration: (\d+), reason:(.*)?")
-	regex_capture = re.compile("LogMordhauPlayerController: Display: (.+) muted player (\d+) \(Duration: (\d+)\)")
-	regex_parse = re.search(regex_capture, message)
-	if not regex_parse:
-		print('Failed to parse the regex for message!!!')
-		return "ERROR","ERROR","ERROR"
+		return "ERROR", "ERROR", "ERROR"
 	admin = regex_parse[1]
 	steamid = regex_parse[2]
 	duration = regex_parse[3]
-	return admin,steamid,duration
+	try:
+		reason = regex_parse[4]
+	except IndexError:
+		reason = 'None given'
+	return admin, steamid, duration, reason
 
-def get_playerhistory(server,steamid):
+
+def parse_messageMute(message):
+	# LogMordhauPlayerController: Display: Admin AssaultLine (76561198005305380) muted player 76561198966484285 (Duration: 10000)
+	# regex_capture = re.compile("LogMordhauPlayerController: Display: (\d+), duration: (\d+), reason:(.*)?")
+	regex_capture = re.compile("LogMordhauPlayerController: Display: Admin (.+) muted player (\d+) \(Duration: (\d+)\)")
+	regex_parse = re.search(regex_capture, message)
+	if not regex_parse:
+		print('Failed to parse the regex for message!!!')
+		return "ERROR", "ERROR", "ERROR"
+	admin = regex_parse[1]
+	steamid = regex_parse[2]
+	duration = regex_parse[3]
+	return admin, steamid, duration
+
+
+def parse_messageUnban(message):
+	# LogMordhauPlayerController: Display: Admin AssaultLine (76561198005305380) muted player 76561198966484285 (Duration: 10000)
+	# regex_capture = re.compile("LogMordhauPlayerController: Display: Admin (.+) muted player (\d+) \(Duration: (\d+)\)")
+	regex_capture = re.compile("LogMordhauPlayerController: Display: Admin (.+) unbanned player (\d+)")
+	regex_parse = re.search(regex_capture, message)
+	if not regex_parse:
+		print('Failed to parse the regex for message!!!')
+		return "ERROR", "ERROR"
+	admin = regex_parse[1]
+	steamid = regex_parse[2]
+	return admin, steamid
+
+
+def get_playerhistory(server, steamid):
 	global playerhistoryData
-	
+
 	now = datetime.datetime.now()
 	year = now.year
 	month = now.month
-	
+
 	try:
-		playerhistoryData = util.load_data(year,month,"playerhistory")
+		playerhistoryData = util.load_data(year, month, "playerhistory")
 	except:
-		#traceback.print_exc()
+		# traceback.print_exc()
 		print("Some kind of load error")
 		playerhistoryData = {}
-	
-	#print(playerhistoryData)
-	
+
+	print(playerhistoryData)
+
 	if str(server) in playerhistoryData:
-		#print("Server has old data")
+		print("Server has old data")
 		if str(steamid) in playerhistoryData[str(server)]:
 			print("Returning old history")
 			return playerhistoryData[str(server)][str(steamid)]["history"]
-	
-	#print("No old data found")
+
+	print("No old data found")
 	return None
 
-def update_playerhistory(server,steamid,playername,history):
+
+def update_playerhistory(server, steamid, playername, history):
 	global playerhistoryData
-	
+
 	now = datetime.datetime.now()
 	year = now.year
 	month = now.month
-	
+
 	if not str(server) in playerhistoryData:
 		playerhistoryData[str(server)] = {}
 	if not str(steamid) in playerhistoryData[str(server)]:
 		playerhistoryData[str(server)][str(steamid)] = {}
 		playerhistoryData[str(server)][str(steamid)]["history"] = []
 		playerhistoryData[str(server)][str(steamid)]["playername"] = ""
-		
+
 	playerhistoryData[str(server)][str(steamid)]["history"] = history
 	playerhistoryData[str(server)][str(steamid)]["playername"] = playername
-	
-	#print("Going to save: "+str(playerhistoryData))
-	
-	util.save_data(year,month,playerhistoryData, "playerhistory")
+
+	print("Going to save: " + str(playerhistoryData))
+
+	util.save_data(year, month, playerhistoryData, "playerhistory")
+
 
 def handlerDiscord(data):
 	token = str(config.discordtoken)
@@ -269,6 +358,7 @@ def handlerDiscord(data):
 	client = DiscordClient(data, channel_id)
 	print('Client initialized - running client.')
 	run_client(client, token)
+
 
 def run_client(client, *args):
 	loop = asyncio.get_event_loop()
@@ -285,7 +375,7 @@ class DiscordClient(discord.Client):
 		super(DiscordClient, self).__init__()
 		self.ban_message = ban_message
 		self.channel_id = int(channel_id)
-		
+
 	async def on_ready(self):
 		print('Logged on as {0}!'.format(self.user))
 		print('Getting channel ID.')
@@ -293,49 +383,81 @@ class DiscordClient(discord.Client):
 		if channel is None:
 			print("ERROR: Unable to get discord channel")
 			await self.close()
-			
+
 		if not self.ban_message['BanHistory']:
 			past_offenses = 'NONE'
 		else:
-			past_offenses = '\n**------------------**\n' + '\n------------------\n'.join([
-				(
-					'Date: ' + m['BanDate'] +
-					'\nOffense: ' + m['BanReason'] +
-					'\nDuration: ' + str(m['BanDuration']) + ' (in minutes)'
-				)
-				for m in self.ban_message['BanHistory']
-			]) + '\n**------------------**'
+			past_offenses = '\n------------------'
+			for m in self.ban_message['BanHistory']:
+				actionType = m.get('Type')
+				actionAdmin = m.get('BanAdmin')
+
+				if not actionAdmin:
+					if m.get('MuteAdmin'):
+						actionAdmin = m.get('MuteAdmin')
+					else:
+						actionAdmin = 'Undefined'
+
+				if not actionType:
+					if m.get('BanAdmin'):
+						actionType = 'BAN'
+					else:
+						if m.get('MuteAdmin'):
+							actionType = 'MUTE'
+						else:
+							actionType = 'Undefined'
+
+				past_offenses += '\nType: ' + actionType + '\nDate: ' + m['BanDate'] + '\nOffense: ' + m['BanReason'] + '\nDuration: ' + str(m['BanDuration']) + ' (in minutes)' + '\nAdmin: ' + actionAdmin + '\n------------------'
+
 		print('Sending message: ', self.ban_message, 'to channel:', self.channel_id)
 		if self.ban_message['Type'] == "BAN":
-			message = f'''**BAN REPORT**:
-		**Server**: {self.ban_message['Server']}
-		**SteamId**: {self.ban_message['SteamId']}
-		**Playername**: {self.ban_message['Playername']}
-		**Offense**: {self.ban_message['Reason']}
-		**Duration**: {self.ban_message['BanDuration']} (in minutes)
+			message = f'''
+**BAN REPORT:**
 
-	**MUGSHOT**
-	{self.ban_message['PlayerAvatar']}
+**Server:** `{self.ban_message['Server']}`
+**SteamId:** `{self.ban_message['SteamId']}`
+**Playername:** `{self.ban_message['Playername']}`
+**Offense:** `{self.ban_message['Reason']}`
+**Admin:** `{self.ban_message['BanAdmin']}`
+**Duration:** `{self.ban_message['BanDuration']} minutes`
 
-	**Previous and Current Offenses**: {past_offenses}
-			'''
+**Previous and Current Offenses:** ```{past_offenses}```
+'''
+			embed = discord.Embed(description=message, color=0xff0000)
+
 		elif self.ban_message['Type'] == "MUTE":
-			message = f'''**MUTE REPORT**:
-		**Server**: {self.ban_message['Server']}
-		**SteamId**: {self.ban_message['SteamId']}
-		**Playername**: {self.ban_message['Playername']}
-		**Admin**: {self.ban_message['MuteAdmin']}
-		**Duration**: {self.ban_message['BanDuration']} (in minutes)
+			message = f'''
+**MUTE REPORT:**
 
-	**MUGSHOT**
-	{self.ban_message['PlayerAvatar']}
+**Server:** `{self.ban_message['Server']}`
+**SteamId:** `{self.ban_message['SteamId']}`
+**Playername:** `{self.ban_message['Playername']}`
+**Admin:** `{self.ban_message['MuteAdmin']}`
+**Duration:** `{self.ban_message['BanDuration']} minutes`
 
-	**Previous and Current Offenses**: {past_offenses}
-			'''		
-		embed = discord.Embed(description=message)
-		
+**Previous and Current Offenses:** ```{past_offenses}```
+'''
+			embed = discord.Embed(description=message, color=0x0087c8)
+
+		elif self.ban_message['Type'] == "UNBAN":
+			message = f'''
+**UNBAN REPORT:**
+
+**Server:** `{self.ban_message['Server']}`
+**SteamId:** `{self.ban_message['SteamId']}`
+**Playername:** `{self.ban_message['Playername']}`
+**Admin:** `{self.ban_message['UnbanAdmin']}`
+
+**Previous and Current Offenses:** ```{past_offenses}```
+'''
+			embed = discord.Embed(description=message, color=0x00ff00)
+
+
+		embed.set_image(url=self.ban_message['PlayerAvatar'])
+
 		await channel.send(embed=embed)
 		print('Message sent, closing client.')
 		await self.close()
+
 
 readLogfilesLoop()
